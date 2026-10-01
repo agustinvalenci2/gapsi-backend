@@ -93,6 +93,38 @@ Swagger esta disponible en `http://localhost:8000/docs`.
 
 ## Docker y despliegue en GCP
 
+### Demo con SQLite dentro del contenedor
+
+La imagen funciona sola, sin Postgres ni Cloud SQL:
+
+```bash
+docker build -t gapsi-demo .
+docker run --rm -p 8000:8000 gapsi-demo
+```
+
+Abre `http://localhost:8000/docs`. Por defecto usa SQLite en
+`/app/data/db.sqlite3`, crea las tablas al arrancar y, si no defines
+`JWT_SECRET_KEY`, genera una clave aleatoria temporal. Los tokens dejan de
+ser validos cuando se reinicia el contenedor. Puedes proporcionar una clave
+propia mediante esa variable. Estas opciones automaticas solo se aplican
+cuando `DATABASE_URL` usa SQLite; las variables explicitas tienen prioridad.
+
+Para Cloud Run, reconstruye y despliega esta version del Dockerfile mediante
+el trigger de tu servicio. Configura `DATABASE_URL=sqlite:///app/data/db.sqlite3`
+y `GENERATE_SCHEMAS=true` si tenias otros valores. Retira las referencias a
+secretos de base de datos y las conexiones a Cloud SQL que hayas agregado.
+Deja vacios el comando y los argumentos personalizados del contenedor para
+usar el arranque de la imagen. `PORT` lo proporciona Cloud Run.
+
+Limita la demo a una instancia y dirige todo el trafico a la nueva revision:
+cada instancia tiene su propia base SQLite y su propia clave temporal.
+Los datos de Cloud Run se pierden cuando la instancia se detiene o se
+reemplaza, incluso con un minimo de una instancia. Esta configuracion es
+para datos descartables de demostracion.
+
+El archivo `cloudbuild.yaml` de abajo corresponde al despliegue con Postgres;
+para esta demo usa el trigger que construye el Dockerfile.
+
 ### Ejecucion local con Docker
 
 1. Copia `.env.template` como `.env` y reemplaza `JWT_SECRET_KEY` y `POSTGRES_PASSWORD`.
