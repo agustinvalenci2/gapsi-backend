@@ -1,0 +1,61 @@
+substitutions:
+  _REGION: us-central1
+  _SERVICE: gapsi-api
+  _REPOSITORY: gapsi
+  _CLOUD_SQL_INSTANCE: ""
+  _DATABASE_URL_SECRET: gapsi-database-url:latest
+  _JWT_SECRET_KEY_SECRET: gapsi-jwt-secret-key:latest
+
+steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        if ! gcloud artifacts repositories describe "${_REPOSITORY}" --location "${_REGION}" >/dev/null 2>&1; then
+          gcloud artifacts repositories create "${_REPOSITORY}" \
+            --repository-format=docker \
+            --location "${_REGION}" \
+            --description="GAPSI Docker images"
+        fi
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$SHORT_SHA
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$SHORT_SHA
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --allow-unauthenticated
+      - --port
+      - "8000"
+      - --set-env-vars
+      - GAPSI_DEBUG=false,GENERATE_SCHEMAS=false
+      - --set-secrets
+      - DATABASE_URL=${_DATABASE_URL_SECRET},JWT_SECRET_KEY=${_JWT_SECRET_KEY_SECRET}
+      - --add-cloudsql-instances
+      - ${_CLOUD_SQL_INSTANCE}
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$SHORT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:latest

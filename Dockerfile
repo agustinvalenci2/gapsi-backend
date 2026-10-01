@@ -4,6 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     && useradd --create-home appuser \
@@ -11,7 +12,12 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && chown appuser:appuser /app/data
 
 COPY --chown=appuser:appuser app ./app
+
 USER appuser
-ENV DATABASE_URL=sqlite:///app/data/db.sqlite3
+
+ENV PORT=8000 \
+    DATABASE_URL=sqlite:///app/data/db.sqlite3
+
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

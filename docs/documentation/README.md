@@ -90,3 +90,44 @@ sin incidencias con cero. El script verifica que el total coincida con la suma.
 
 Despues del DELETE, la solicitud de verificacion espera 404 y cuenta como exitosa.
 Swagger esta disponible en `http://localhost:8000/docs`.
+
+## Docker y despliegue en GCP
+
+### Ejecucion local con Docker
+
+1. Copia `.env.template` como `.env` y reemplaza `JWT_SECRET_KEY` y `POSTGRES_PASSWORD`.
+2. Levanta la API y Postgres:
+
+```bash
+docker compose up --build
+```
+
+La API queda disponible en `http://localhost:8000`. Puedes cambiar el puerto publico con `API_PORT`, por ejemplo `API_PORT=8080 docker compose up --build`.
+
+### Despliegue en Cloud Run
+
+El contenedor escucha el puerto definido por `PORT`, como espera Cloud Run. El archivo `cloudbuild.yaml` construye la imagen, la publica en Artifact Registry y despliega el servicio.
+
+Prepara una instancia de Cloud SQL para Postgres y dos secretos en Secret Manager:
+
+```bash
+gcloud secrets create gapsi-database-url --data-file=-
+gcloud secrets create gapsi-jwt-secret-key --data-file=-
+```
+
+El secreto `gapsi-database-url` debe contener el `DATABASE_URL` de produccion. Para Cloud SQL con socket Unix usa el nombre de conexion de instancia en el host, por ejemplo:
+
+```text
+postgres://USER:PASSWORD@/DB_NAME?host=/cloudsql/PROJECT_ID:REGION:INSTANCE
+```
+
+Despliega con Cloud Build:
+
+```bash
+gcloud builds submit \
+  --config cloudbuild.yaml \
+  --substitutions _REGION=us-central1,_SERVICE=gapsi-api,_REPOSITORY=gapsi,_CLOUD_SQL_INSTANCE=PROJECT_ID:REGION:INSTANCE
+```
+
+Si usas nombres de secretos diferentes, cambia `_DATABASE_URL_SECRET` y `_JWT_SECRET_KEY_SECRET` en las substituciones. En produccion `GENERATE_SCHEMAS=false`; crea o migra tablas antes de exponer trafico real.
+
