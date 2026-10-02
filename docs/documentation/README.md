@@ -153,6 +153,15 @@ El secreto `gapsi-database-url` debe contener el `DATABASE_URL` de produccion. P
 postgres://USER:PASSWORD@/DB_NAME?host=/cloudsql/PROJECT_ID:REGION:INSTANCE
 ```
 
+La configuracion de la aplicacion conserva explicitamente el parametro `host`
+para que Tortoise use el socket Unix. Las versiones anteriores de esta API
+pasaban la URL directamente a Tortoise 1.1.8, que sobrescribia ese parametro
+con un host vacio y terminaba intentando conectarse a localhost.
+Para una imagen anterior, puedes definir temporalmente
+`PGHOST=/cloudsql/PROJECT_ID:REGION:INSTANCE`; asyncpg usa esta variable cuando
+no recibe un host. La instancia debe estar vinculada a Cloud Run y su cuenta
+de servicio debe tener el rol Cloud SQL Client.
+
 Despliega con Cloud Build:
 
 ```bash
