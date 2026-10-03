@@ -1,10 +1,7 @@
 substitutions:
-  _REGION: us-central1
-  _SERVICE: gapsi-api
-  _REPOSITORY: gapsi
-  _CLOUD_SQL_INSTANCE: ""
-  _DATABASE_URL_SECRET: gapsi-database-url:latest
-  _JWT_SECRET_KEY_SECRET: gapsi-jwt-secret-key:latest
+  _REGION: europe-west1
+  _SERVICE: gapsi-backend
+  _REPOSITORY: cloud-run-source-deploy
 
 steps:
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
@@ -23,16 +20,13 @@ steps:
     args:
       - build
       - -t
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$SHORT_SHA
-      - -t
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:latest
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$BUILD_ID
       - .
 
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - --all-tags
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$BUILD_ID
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: gcloud
@@ -41,21 +35,27 @@ steps:
       - deploy
       - ${_SERVICE}
       - --image
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$SHORT_SHA
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$BUILD_ID
       - --region
       - ${_REGION}
       - --platform
       - managed
       - --allow-unauthenticated
       - --port
-      - "8000"
-      - --set-env-vars
-      - GAPSI_DEBUG=false,GENERATE_SCHEMAS=false
-      - --set-secrets
-      - DATABASE_URL=${_DATABASE_URL_SECRET},JWT_SECRET_KEY=${_JWT_SECRET_KEY_SECRET}
-      - --add-cloudsql-instances
-      - ${_CLOUD_SQL_INSTANCE}
+      - "8080"
+      - --command=
+      - --args=
+      - --remove-secrets
+      - DATABASE_URL,JWT_SECRET_KEY
+      - --clear-cloudsql-instances
+      - --remove-env-vars
+      - PGHOST,PGPORT,PGUSER,PGPASSWORD,PGDATABASE,JWT_SECRET_KEY
+      - --update-env-vars
+      - DATABASE_URL=sqlite:///app/data/db.sqlite3,GAPSI_DEBUG=false,GENERATE_SCHEMAS=true
+      - --max
+      - "1"
+      - --max-instances
+      - "1"
 
 images:
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$SHORT_SHA
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:latest
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$BUILD_ID

@@ -1,36 +1,18 @@
 name: gapsi
 
 services:
-  db:
-    image: postgres:17-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-gapsi}
-      POSTGRES_USER: ${POSTGRES_USER:-gapsi}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-
   api:
     build: .
     image: gapsi-api:local
     restart: unless-stopped
-    env_file: .env
     environment:
       PORT: 8000
-      DATABASE_URL: postgres://${POSTGRES_USER:-gapsi}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-gapsi}
+      DATABASE_URL: sqlite:///app/data/db.sqlite3
+      GENERATE_SCHEMAS: "true"
     ports:
       - "${API_PORT:-8000}:8000"
-    depends_on:
-      db:
-        condition: service_healthy
+    volumes:
+      - sqlite-data:/app/data
 
 volumes:
-  postgres-data:
+  sqlite-data:

@@ -109,12 +109,11 @@ ser validos cuando se reinicia el contenedor. Puedes proporcionar una clave
 propia mediante esa variable. Estas opciones automaticas solo se aplican
 cuando `DATABASE_URL` usa SQLite; las variables explicitas tienen prioridad.
 
-Para Cloud Run, reconstruye y despliega esta version del Dockerfile mediante
-el trigger de tu servicio. Configura `DATABASE_URL=sqlite:///app/data/db.sqlite3`
-y `GENERATE_SCHEMAS=true` si tenias otros valores. Retira las referencias a
-secretos de base de datos y las conexiones a Cloud SQL que hayas agregado.
-Deja vacios el comando y los argumentos personalizados del contenedor para
-usar el arranque de la imagen. `PORT` lo proporciona Cloud Run.
+Para Cloud Run usa el `cloudbuild.yaml` de este repositorio, que configura
+SQLite, crea las tablas y retira las conexiones a Cloud SQL, las referencias
+a secretos de base de datos/JWT y las variables de PostgreSQL anteriores.
+Tambien restablece el comando de arranque de la imagen. `PORT` lo proporciona
+Cloud Run.
 
 Limita la demo a una instancia y dirige todo el trafico a la nueva revision:
 cada instancia tiene su propia base SQLite y su propia clave temporal.
@@ -122,53 +121,51 @@ Los datos de Cloud Run se pierden cuando la instancia se detiene o se
 reemplaza, incluso con un minimo de una instancia. Esta configuracion es
 para datos descartables de demostracion.
 
-El archivo `cloudbuild.yaml` de abajo corresponde al despliegue con Postgres;
-para esta demo usa el trigger que construye el Dockerfile.
-
 ### Ejecucion local con Docker
 
-1. Copia `.env.template` como `.env` y reemplaza `JWT_SECRET_KEY` y `POSTGRES_PASSWORD`.
-2. Levanta la API y Postgres:
+Levanta la API con SQLite sin preparar un `.env`:
 
 ```bash
 docker compose up --build
 ```
 
-La API queda disponible en `http://localhost:8000`. Puedes cambiar el puerto publico con `API_PORT`, por ejemplo `API_PORT=8080 docker compose up --build`.
+La API queda disponible en `http://localhost:8000`. Compose guarda SQLite en
+el volumen `sqlite-data`, que conserva los datos entre recreaciones locales
+del contenedor. Los JWT temporales se invalidan al reiniciar. Puedes cambiar
+el puerto publico con `API_PORT`, por ejemplo
+`API_PORT=8080 docker compose up --build` en Bash.
 
 ### Despliegue en Cloud Run
 
-El contenedor escucha el puerto definido por `PORT`, como espera Cloud Run. El archivo `cloudbuild.yaml` construye la imagen, la publica en Artifact Registry y despliega el servicio.
-
-Prepara una instancia de Cloud SQL para Postgres y dos secretos en Secret Manager:
-
-```bash
-gcloud secrets create gapsi-database-url --data-file=-
-gcloud secrets create gapsi-jwt-secret-key --data-file=-
-```
-
-El secreto `gapsi-database-url` debe contener el `DATABASE_URL` de produccion. Para Cloud SQL con socket Unix usa el nombre de conexion de instancia en el host, por ejemplo:
-
-```text
-postgres://USER:PASSWORD@/DB_NAME?host=/cloudsql/PROJECT_ID:REGION:INSTANCE
-```
-
-La configuracion de la aplicacion conserva explicitamente el parametro `host`
-para que Tortoise use el socket Unix. Las versiones anteriores de esta API
-pasaban la URL directamente a Tortoise 1.1.8, que sobrescribia ese parametro
-con un host vacio y terminaba intentando conectarse a localhost.
-Para una imagen anterior, puedes definir temporalmente
-`PGHOST=/cloudsql/PROJECT_ID:REGION:INSTANCE`; asyncpg usa esta variable cuando
-no recibe un host. La instancia debe estar vinculada a Cloud Run y su cuenta
-de servicio debe tener el rol Cloud SQL Client.
-
-Despliega con Cloud Build:
+El archivo `cloudbuild.yaml` construye la imagen, la publica en Artifact
+Registry y despliega `gapsi-backend` en `europe-west1`, con SQLite y un maximo
+de una instancia. No necesita Cloud SQL ni Secret Manager.
+Desde la carpeta del backend actualizado ejecuta:
 
 ```bash
-gcloud builds submit \
-  --config cloudbuild.yaml \
-  --substitutions _REGION=us-central1,_SERVICE=gapsi-api,_REPOSITORY=gapsi,_CLOUD_SQL_INSTANCE=PROJECT_ID:REGION:INSTANCE
+gcloud builds submit . \
+  --project=project-8363decf-a2fb-441d-9c1 \
+  --config=cloudbuild.yaml
 ```
 
-Si usas nombres de secretos diferentes, cambia `_DATABASE_URL_SECRET` y `_JWT_SECRET_KEY_SECRET` en las substituciones. En produccion `GENERATE_SCHEMAS=false`; crea o migra tablas antes de exponer trafico real.
+Para un trigger automatico, selecciona el archivo `cloudbuild.yaml` del
+repositorio como configuracion de compilacion. El trigger generado por
+Cloud Run que solo construye el Dockerfile y actualiza la imagen no aplica
+estos cambios de variables. Puedes personalizar `_REGION`, `_SERVICE` y
+`_REPOSITORY` con sustituciones de Cloud Build.
+
+Si solo quieres volver a SQLite con la imagen ya desplegada (que debe
+incluir `app/start.py`), ejecuta en Cloud Shell:
+
+```bash
+gcloud run services update gapsi-backend \
+  --project=project-8363decf-a2fb-441d-9c1 \
+  --region=europe-west1 \
+  --remove-secrets=DATABASE_URL,JWT_SECRET_KEY \
+  --clear-cloudsql-instances \
+  --remove-env-vars=PGHOST,PGPORT,PGUSER,PGPASSWORD,PGDATABASE,JWT_SECRET_KEY \
+  --update-env-vars=DATABASE_URL=sqlite:///app/data/db.sqlite3,GENERATE_SCHEMAS=true \
+  --command='' --args='' \
+  --max=1 --max-instances=1
+```
 
